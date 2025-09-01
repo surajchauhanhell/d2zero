@@ -3,10 +3,12 @@ import { DriveApiResponse, DriveFile } from '@/types/drive-types';
 const GOOGLE_DRIVE_API_KEY = import.meta.env.VITE_GOOGLE_DRIVE_API_KEY || 'AIzaSyBnHPSdgv2Cc6wU38itY6YLriAb2g1_VQg';
 const FOLDER_ID = '1zNc01nfAo3X_m4IaWCjoZHTA_6tHhmbH';
 
-export async function fetchGoogleDriveFiles(): Promise<DriveFile[]> {
+export async function fetchGoogleDriveFiles(folderId?: string): Promise<DriveFile[]> {
+  const targetFolderId = folderId || FOLDER_ID;
+  
   try {
     const response = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents&key=${GOOGLE_DRIVE_API_KEY}&fields=files(id,name,mimeType,size,webViewLink,webContentLink)`
+      `https://www.googleapis.com/drive/v3/files?q='${targetFolderId}'+in+parents&key=${GOOGLE_DRIVE_API_KEY}&fields=files(id,name,mimeType,size,webViewLink,webContentLink,parents)&orderBy=folder,name`
     );
     
     if (!response.ok) {
@@ -21,7 +23,25 @@ export async function fetchGoogleDriveFiles(): Promise<DriveFile[]> {
   }
 }
 
+export async function fetchFolderInfo(folderId: string): Promise<{ name: string } | null> {
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${folderId}?key=${GOOGLE_DRIVE_API_KEY}&fields=name`
+    );
+    
+    if (!response.ok) {
+      return null;
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching folder info:', error);
+    return null;
+  }
+}
+
 export function getFileType(mimeType: string): string {
+  if (mimeType === 'application/vnd.google-apps.folder') return 'folder';
   if (mimeType.includes('video')) return 'video';
   if (mimeType.includes('pdf')) return 'pdf';
   if (mimeType.includes('image')) return 'image';
@@ -42,7 +62,18 @@ export function formatFileSize(bytes?: string): string {
 }
 
 export function getVideoUrl(fileId: string): string {
-  return `https://drive.google.com/uc?export=download&id=${fileId}`;
+  // Use the embed preview URL which works better for streaming
+  return `https://drive.google.com/file/d/${fileId}/preview`;
+}
+
+export function getVideoUrlAlternative(fileId: string): string {
+  // Alternative direct download URL
+  return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
+}
+
+export function getVideoUrlEmbed(fileId: string): string {
+  // Direct view URL as fallback
+  return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
 export function getPDFUrl(fileId: string): string {

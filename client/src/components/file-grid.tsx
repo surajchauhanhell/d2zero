@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchGoogleDriveFiles, getFileType } from '@/services/google-drive';
-import { DriveFile } from '@/types/drive-types';
+import { fetchGoogleDriveFiles, fetchFolderInfo, getFileType } from '@/services/google-drive';
+import { DriveFile, FolderBreadcrumb } from '@/types/drive-types';
 import FileCard from './file-card';
-import VideoModal from './video-modal';
+import FolderBreadcrumbComponent from './folder-breadcrumb';
+import VideoPlaylist from './video-playlist';
 import PDFModal from './pdf-modal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,9 +17,11 @@ type SortField = 'name' | 'size' | 'type';
 type SortOrder = 'asc' | 'desc';
 
 export default function FileGrid() {
-  const [selectedVideo, setSelectedVideo] = useState<DriveFile | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [breadcrumbs, setBreadcrumbs] = useState<FolderBreadcrumb[]>([]);
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
   const [selectedPDF, setSelectedPDF] = useState<DriveFile | null>(null);
-  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [isVideoPlaylistOpen, setIsVideoPlaylistOpen] = useState(false);
   const [isPDFModalOpen, setIsPDFModalOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
@@ -31,15 +34,46 @@ export default function FileGrid() {
     error,
     refetch 
   } = useQuery({
-    queryKey: ['/api/google-drive-files'],
-    queryFn: fetchGoogleDriveFiles,
+    queryKey: ['/api/google-drive-files', currentFolderId],
+    queryFn: () => fetchGoogleDriveFiles(currentFolderId || undefined),
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 2,
   });
 
+  const handleOpenFolder = async (file: DriveFile) => {
+    if (getFileType(file.mimeType) === 'folder') {
+      // Add current folder to breadcrumbs
+      const newBreadcrumbs = [...breadcrumbs, { id: file.id, name: file.name }];
+      setBreadcrumbs(newBreadcrumbs);
+      setCurrentFolderId(file.id);
+      setSearchQuery(''); // Clear search when navigating
+    } else {
+      // For non-folders, open in Google Drive as fallback
+      if (file.webViewLink) {
+        window.open(file.webViewLink, '_blank');
+      }
+    }
+  };
+
+  const handleBreadcrumbNavigate = (folderId: string | null) => {
+    if (folderId === null) {
+      // Navigate to root
+      setBreadcrumbs([]);
+      setCurrentFolderId(null);
+    } else {
+      // Navigate to specific folder in breadcrumb
+      const crumbIndex = breadcrumbs.findIndex(crumb => crumb.id === folderId);
+      if (crumbIndex !== -1) {
+        setBreadcrumbs(breadcrumbs.slice(0, crumbIndex + 1));
+        setCurrentFolderId(folderId);
+      }
+    }
+    setSearchQuery(''); // Clear search when navigating
+  };
+
   const handleOpenVideo = (file: DriveFile) => {
-    setSelectedVideo(file);
-    setIsVideoModalOpen(true);
+    setSelectedVideoId(file.id);
+    setIsVideoPlaylistOpen(true);
   };
 
   const handleOpenPDF = (file: DriveFile) => {
@@ -54,21 +88,19 @@ export default function FileGrid() {
     }
   };
 
-  const handleWatchFolder = (file: DriveFile) => {
-    if (file.webViewLink) {
-      window.open(file.webViewLink, '_blank');
-    } else {
-      // Fallback to the main folder if webViewLink is not available
-      window.open('https://drive.google.com/drive/folders/1zNc01nfAo3X_m4IaWCjoZHTA_6tHhmbH', '_blank');
-    }
-  };
-
   const handleRefresh = () => {
     refetch();
   };
 
   const sortFiles = (files: DriveFile[]): DriveFile[] => {
     return [...files].sort((a, b) => {
+      // Always put folders first
+      const aIsFolder = getFileType(a.mimeType) === 'folder';
+      const bIsFolder = getFileType(b.mimeType) === 'folder';
+      
+      if (aIsFolder && !bIsFolder) return -1;
+      if (!aIsFolder && bIsFolder) return 1;
+      
       let aValue: string | number;
       let bValue: string | number;
 
@@ -194,6 +226,14 @@ export default function FileGrid() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb Navigation */}
+      {breadcrumbs.length > 0 && (
+        <FolderBreadcrumbComponent
+          breadcrumbs={breadcrumbs}
+          onNavigate={handleBreadcrumbNavigate}
+        />
+      )}
+
       {/* Search bar */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -255,19 +295,20 @@ export default function FileGrid() {
               onOpenVideo={handleOpenVideo}
               onOpenPDF={handleOpenPDF}
               onOpenImage={handleOpenImage}
-              onWatchFolder={handleWatchFolder}
+              onOpenFolder={handleOpenFolder}
             />
           </div>
         ))}
       </div>
 
       {/* Modals */}
-      <VideoModal
-        file={selectedVideo}
-        isOpen={isVideoModalOpen}
+      <VideoPlaylist
+        files={files.filter(file => getFileType(file.mimeType) === 'video')}
+        initialVideoId={selectedVideoId || undefined}
+        isOpen={isVideoPlaylistOpen}
         onClose={() => {
-          setIsVideoModalOpen(false);
-          setSelectedVideo(null);
+          setIsVideoPlaylistOpen(false);
+          setSelectedVideoId(null);
         }}
       />
 
