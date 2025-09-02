@@ -12,11 +12,12 @@ import {
   SkipBack, 
   Volume2, 
   VolumeX,
-  Maximize,
-  Minimize,
+  RotateCcw,
+  RotateCw,
   List,
   X,
-  RefreshCw
+  RefreshCw,
+  ExternalLink
 } from 'lucide-react';
 
 interface VideoPlaylistProps {
@@ -31,7 +32,6 @@ export default function VideoPlaylist({ files, initialVideoId, isOpen, onClose }
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showPlaylist, setShowPlaylist] = useState(true);
   const [videoError, setVideoError] = useState(false);
   const [currentVideoUrl, setCurrentVideoUrl] = useState('');
@@ -148,15 +148,17 @@ export default function VideoPlaylist({ files, initialVideoId, isOpen, onClose }
     }
   };
 
-  const toggleFullscreen = () => {
-    const videoContainer = document.querySelector('.video-container') as HTMLElement;
-    if (videoContainer) {
-      if (!isFullscreen) {
-        videoContainer.requestFullscreen();
-      } else {
-        document.exitFullscreen();
-      }
-      setIsFullscreen(!isFullscreen);
+  const skipForward = () => {
+    const video = document.querySelector('[data-testid="playlist-video-player"]') as HTMLVideoElement;
+    if (video) {
+      video.currentTime = Math.min(video.currentTime + 10, video.duration || 0);
+    }
+  };
+
+  const skipBackward = () => {
+    const video = document.querySelector('[data-testid="playlist-video-player"]') as HTMLVideoElement;
+    if (video) {
+      video.currentTime = Math.max(video.currentTime - 10, 0);
     }
   };
 
@@ -168,6 +170,9 @@ export default function VideoPlaylist({ files, initialVideoId, isOpen, onClose }
     }
   };
 
+  const handlePopOut = () => {
+    window.open('https://www.youtube.com/@ApnaCollegeOfficial', '_blank');
+  };
   if (!currentVideo || videoFiles.length === 0) return null;
 
   return (
@@ -178,6 +183,15 @@ export default function VideoPlaylist({ files, initialVideoId, isOpen, onClose }
             {currentVideo.name} ({currentVideoIndex + 1} of {videoFiles.length})
           </DialogTitle>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePopOut}
+              data-testid="button-popout"
+              title="Visit Apna College YouTube Channel"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -209,13 +223,6 @@ export default function VideoPlaylist({ files, initialVideoId, isOpen, onClose }
                         <Button onClick={retryVideo} variant="outline">
                           <RefreshCw className="w-4 h-4 mr-2" />
                           Retry
-                        </Button>
-                        <Button 
-                          onClick={() => window.open(currentVideo.webViewLink, '_blank')} 
-                          variant="outline"
-                          disabled={!currentVideo.webViewLink}
-                        >
-                          Open in Drive
                         </Button>
                         <Button onClick={playPrevious} disabled={currentVideoIndex === 0}>
                           <SkipBack className="w-4 h-4 mr-2" />
@@ -273,11 +280,70 @@ export default function VideoPlaylist({ files, initialVideoId, isOpen, onClose }
                         key={`${currentVideo.id}-iframe`}
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
+                       sandbox="allow-scripts allow-same-origin allow-presentation"
+                      />
+                    )}
+                    
+                    {/* Overlay to intercept pop-out clicks on iframe */}
+                    {urlAttempt >= 2 && (
+                      <div 
+                        className="absolute top-2 right-2 w-10 h-10 cursor-pointer z-30"
+                        onClick={handlePopOut}
+                        title="Visit Apna College YouTube Channel"
+                        data-testid="iframe-popout-overlay"
                       />
                     )}
                   </div>
                 )}
                 
+                {/* Custom Video Controls */}
+                {!videoError && urlAttempt < 2 && (
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+                    <div className="flex items-center gap-2 bg-black/70 backdrop-blur-sm rounded-lg px-4 py-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={playPrevious}
+                        disabled={currentVideoIndex === 0}
+                        className="text-white hover:bg-white/20"
+                        data-testid="button-previous-video"
+                      >
+                        <SkipBack className="w-4 h-4" />
+                      </Button>
+                      
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={togglePlay}
+                        className="text-white hover:bg-white/20"
+                        data-testid="button-play-pause"
+                      >
+                        {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                      </Button>
+                      
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleMute}
+                        className="text-white hover:bg-white/20"
+                        data-testid="button-mute"
+                      >
+                        {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                      </Button>
+                      
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={playNext}
+                        disabled={currentVideoIndex === videoFiles.length - 1}
+                        className="text-white hover:bg-white/20"
+                        data-testid="button-next-video"
+                      >
+                        <SkipForward className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
